@@ -1,8 +1,9 @@
-import argparse
+"""A simple script for training and evaluating BLOOM on the AI2-ARC dataset."""
 from datasets import load_dataset
+import argparse
 from torch.optim import AdamW, lr_scheduler
 from torch.utils.data import DataLoader, Dataset
-from peft import PromptTuningConfig, TaskType, PromptTuningInit, get_peft_model, LoraConfig, PrefixTuningConfig
+from peft import PromptTuningConfig, TaskType, PromptTuningInit, get_peft_model, LoraConfig, PrefixTuningConfig, PeftModel
 import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import numpy as np
@@ -10,7 +11,7 @@ import pdb
 import random
 import time
 import os
-"""A simple script for training and evaluating BLOOM on the AI2-ARC dataset."""
+import sys
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -59,7 +60,7 @@ class BloomWrapper():
 
         # Initialize or load the finetuned parameters.
         if args.finetuned_model is not None:
-            self.model = Peftmodel.from_pretrained(self.model, args.finetuned_model) 
+            self.model = PeftModel.from_pretrained(self.model, args.finetuned_model) 
         else:
             self.model = get_peft_model(self.model, peft_config)
 
@@ -107,11 +108,12 @@ class BloomWrapper():
         wandb.log({"train/loss": np.array(self.losses).mean()})
         self.losses = []
 
-    def validation_step(self, batch):
+    def validation_step(self, batch, print_eval):
         """Peforms a single batch of validation.
 
         args:
             batch: the input data.
+            print_eval: print the input/output strings
         """
         # Tokenize the input batch.
         tokenized_batch = self.tokenizer(
@@ -126,11 +128,13 @@ class BloomWrapper():
         num_in_prompt = tokenized_batch['attention_mask'].sum(axis=1)
         max_new_tokens = (tokenized_for_length - num_in_prompt).max()
 
-        # Generate the answer.
+        # Generate the answer. Added some to max_new_tokens due to observed
+        # errors. TODO: Figure out why this is happening.
         result = self.model.generate(
             input_ids = tokenized_batch['input_ids'].to(self.device),
             attention_mask=tokenized_batch['attention_mask'].to(self.device),
-            max_new_tokens=max_new_tokens)
+            max_new_tokens=max_new_tokens+5)
+
 
         # Evaluate the answers one-by-one
         # TODO: Consider moving the string cleaning to a separate fn.
@@ -140,7 +144,14 @@ class BloomWrapper():
             answer = answer.split("\n")[0]
             answer = answer.replace("</s>", "")
             answer = answer.replace("<pad>", "")
-            
+            answer = answer.strip()
+           
+            if args.print_eval:
+                print(batch['prompt'][i])
+                print(f"Target: {batch['target'][i]}, Guess: {answer}")
+                print("---")
+                pdb.set_trace()
+
             # Is the answer correct?
             self.val_correct.append(
                 batch['target'][i].lower().strip().replace(
@@ -152,7 +163,10 @@ class BloomWrapper():
                     ".", "") in batch['prompt'][i].lower().strip().replace(
                         ".", ""))
     def on_validation_epoch_end(self):
-        """Finishes a validation epoch. Logs and resets variables."""
+        """Finishes a validation epoch. Logs and resets variables.
+
+        return: the logging dict.
+        """
         out_dict = {}
         out_dict["val/acc"] = np.array(self.val_correct).mean()
         out_dict["val/valid"] = np.array(self.answer_valid).mean()
@@ -165,6 +179,8 @@ class BloomWrapper():
         wandb.log(out_dict)
         self.answer_valid = []
         self.val_correct = []
+
+        return out_dict
 
     def configure_optimizers(self):
         """Gets the optimizers.
@@ -278,7 +294,7 @@ if __name__ == "__main__":
     # Get and set command line args.
     # TODO: add help.
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start_lr", type=float, required=True)
+    parser.add_argument("--start_lr", type=float)
     parser.add_argument("--base_model", type=str, required=True)
     parser.add_argument("--finetune_method", type=str,
                         choices=["prompt","prefix","lora"], required=True)
@@ -289,9 +305,10 @@ if __name__ == "__main__":
     parser.add_argument("--finetuned_model", type=str)
     parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cuda")
     parser.add_argument("--n_shot", type=int)
-    parser.add_argument("--end_lr_divisor", type=float, required=True)
+    parser.add_argument("--end_lr_divisor", type=float)
     parser.add_argument("--batch_size", type=int, default=2)
     parser.add_argument("--eval_only", action="store_true", default=False)
+    parser.add_argument("--print_eval", action="store_true", default=False)
     parser.add_argument("--split", type=str, required=True,
                         choices=["ARC-Easy", "ARC-Challenge"])
     args = parser.parse_args()
@@ -303,26 +320,22 @@ if __name__ == "__main__":
                             shuffle=False, num_workers=os.cpu_count())
     train_dataset = MCQADataset(base_dataset, "train", n_shot=args.n_shot)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=os.cpu_count())
-    
-    wandb.init(project="tune-bloom", config=args)
-    optimizer, scheduler = model.configure_optimizers()
-    best_acc = 0
-    
-    out_dir = f"saved_models/{str(time.time()).split('.')[0]}-{args.base_model.split('/')[-1]}-{args.finetune_method}-{args.virtual_tokens}-{args.n_shot}/"
+   
+    if not args.eval_only:
+        wandb.init(project="tune-bloom", config=args)
+        optimizer, scheduler = model.configure_optimizers()
+        best_acc = 0
+        best_valid = 0
+        best_acc_given_valid = 0
+        
+        out_dir = f"saved_models/{args.base_model.split('/')[-1]}-{args.finetune_method}-{args.virtual_tokens}-{args.n_shot}-{args.split}-{str(time.time()).split('.')[0]}/"
     for epoch in range(120):
         model.model.eval()
         i = 0
         for eval_data in val_loader:
-            model.validation_step(eval_data)
+            model.validation_step(eval_data, args.print_eval)
             i+=1
-        to_log = {}
-        to_log["epoch"] = epoch
-        to_log["val/acc"] = np.array(model.val_correct).mean()
-        to_log["val/valid"] = np.array(model.answer_valid).mean()
-        where_valid = np.where(np.array(model.answer_valid))[0]
-        if where_valid.shape[0] > 0:
-            to_log["val/correct_given_valid"] = np.array(
-                model.val_correct)[where_valid].mean()
+        to_log = model.on_validation_epoch_end()
         
         # If we're only doing evaluation, print the results and exit.
         if args.eval_only:
@@ -330,10 +343,19 @@ if __name__ == "__main__":
             sys.exit()
         if to_log["val/acc"] > best_acc:
             best_acc = to_log["val/acc"]
-            model.model.save_pretrained(out_dir+"best")
+            model.model.save_pretrained(out_dir+"best_acc")
+            wandb.log({"val/best_acc": best_acc})
+        if to_log["val/valid"] > best_valid:
+            best_valid = to_log["val/valid"]
+            model.model.save_pretrained(out_dir+"best_valid")
+            wandb.log({"val/best_valid": best_valid})
+        if to_log["val/correct_given_valid"] > best_acc_given_valid:
+            best_acc_given_valid = to_log["val/correct_given_valid"]
+            model.model.save_pretrained(out_dir+"best_given_valid")
+            wandb.log({"val/best_acc_given_valid": best_acc_given_valid})
+
         model.model.save_pretrained(out_dir+"last")
 
-        model.on_validation_epoch_end()
         model.model.train()
 
         i = 0
@@ -345,4 +367,5 @@ if __name__ == "__main__":
             i+=1
 
         model.training_epoch_end()
+        wandb.log({"train/epoch": epoch, "train/lr": scheduler.get_last_lr()[0]})
         scheduler.step()
