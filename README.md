@@ -1,6 +1,6 @@
 # BLOOM for ARC
 
-In this repository is code to train a BLOOM model to answer questions in the [AI2 Reasoning Challenge (ARC) dataset] (https://allenai.org/data/arc). Most of the heavy lifting is done by [Hugging Face](https://github.com/huggingface), specifically the [transformers](https://github.com/huggingface/transformers), [datasets](https://github.com/huggingface/datasets), and [peft](https://github.com/huggingface/peft) libraries.
+In this repository is code to train a BLOOM model to answer questions in the [AI2 Reasoning Challenge (ARC) dataset](https://allenai.org/data/arc). Most of the heavy lifting is done by [Hugging Face](https://github.com/huggingface), specifically the [transformers](https://github.com/huggingface/transformers), [datasets](https://github.com/huggingface/datasets), and [peft](https://github.com/huggingface/peft) libraries.
 
 ## General Approach
 This repository uses zero or few-shot learning, where the number of shots is set based on a command line argument. Fine-tuning is performed using methods from the [peft](https://github.com/huggingface/peft) library.
@@ -12,3 +12,8 @@ This repository uses zero or few-shot learning, where the number of shots is set
 ## Performance
 
 ## Gridsearch Results
+
+## Installing environment
+Environment is packaged with conda:
+
+`conda env create -f environment.yml`
