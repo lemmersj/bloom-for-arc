@@ -1,0 +1,13 @@
+{
+  "base_model_name_or_path": "bigscience/bloomz-1b7",
+  "encoder_hidden_size": 2048,
+  "inference_mode": true,
+  "num_attention_heads": 16,
+  "num_layers": 24,
+  "num_transformer_submodules": 1,
+  "num_virtual_tokens": 30,
+  "peft_type": "PREFIX_TUNING",
+  "prefix_projection": false,
+  "task_type": "CAUSAL_LM",
+  "token_dim": 2048
+}
