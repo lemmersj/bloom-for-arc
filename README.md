@@ -11,7 +11,7 @@ Finetuning is simply the prediction loss returned by huggingface. A prediction i
 
 `[A, B, C, D, 1, 2, 3, 4]: The matching answer given in the question.`
 
-A prediction is considered *correct* if the answer matches the one in the answer key. In both cases, we end the candidate answer at a line break, strip off \<\/s\>  and \<pad\> tags, remove periods and beginning/ending spaces, and convert to lower. 
+A prediction is considered *correct* if the answer matches the one in the answer key. In both cases, we end the candidate answer at a line break, strip off \<\/s\>  and \<pad\> tags, remove periods and beginning/ending spaces, and convert to lower. **NB:** I believe the split on the \n is unnecessary, because it looks like the </s> tag is deployed properly, but it continues to generate until some other condition is reached (perhaps until all queries in the batch have terminated.)
 
 ## Supported Methods
 * As of now, only prefix tuning has been tested, but LoRA and prompt tuning can be enabled via command line. If you try them and they work, let me know. If they don't work, let me know. If you make them work, send a pull request.
