@@ -197,7 +197,11 @@ class BloomWrapper:
                 where_valid
             ].mean()
 
-        wandb.log(out_dict)
+        try:
+            wandb.log(out_dict)
+        except wandb.Error:
+            pass
+
         self.answer_valid = []
         self.val_correct = []
 
