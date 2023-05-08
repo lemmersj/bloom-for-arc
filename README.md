@@ -34,7 +34,7 @@ The model included with this repository achieves 62.281% accuracy, 99.298% valid
 
 On the challenge split, it achieves 40.134% accuracy, 98.328% validity, and 40.816% accuracy on valid examples. The model with the same hyperparameters trained on the challenge set achieves an accuracy of 38.462%. Broadly, this indicates that training on more data is more important than training on so-called hard problems---likely, the distribution shift is not so meaningful from a training standpoint.
 
-The full gridsearch results are [here](gridearch_results.csv). It is worth noting that the prompts for --n_shot > 1 were produced randomly, so there is some stochasticity in performance.
+The full gridsearch results are [here](train_results.csv). Prompts for --n_shot > 1 were produced randomly, so there is some stochasticity in performance. I'm not sure why some of the columns are incomplete, but the data does exist in the WandB run. Although two of the runs did not complete, I'm confident the provided weights are the best of the given hyperparameters.
 
 ## Installing environment
 Environment is packaged with conda:
