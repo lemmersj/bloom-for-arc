@@ -6,7 +6,6 @@ import os
 import sys
 
 from torch.optim import AdamW, lr_scheduler
-from torch.utils.data import DataLoader, Dataset
 from peft import (
     PromptTuningConfig,
     TaskType,
@@ -17,10 +16,11 @@ from peft import (
     PeftModel,
 )
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_dataset
-
+from mcqa_dataset import MCQADataset
 import numpy as np
 import wandb
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -224,107 +224,6 @@ class BloomWrapper:
         )
         return optimizer, scheduler
 
-
-class MCQADataset(Dataset):
-    """A class meant to simplify multiple choice problems
-
-    Note: this is likely not sufficiently general to extend beyond AI2-ARC
-    """
-
-    def __init__(self, base_dataset, split, n_shot):
-        """Initializes the dataset.
-
-        args:
-            base_dataset: a multiple-choice dataset from huggingface hub.
-            split: train/val/test
-            n_shot: how many examples to give the model as a prefix.
-
-        returns: nothing.
-        """
-        self.n_shot = n_shot
-
-        # Initialize containers for the data.
-        self.prompt_strings = []  # The questions that are given to the model.
-        self.target_strings = []  # The target outputs.
-        self.dataset_strings = []  # The prompt and the target together.
-
-        for item in base_dataset[split]:
-            prompt, target, dataset = self.build_question(item)
-            self.prompt_strings.append(prompt)
-            self.target_strings.append(target)
-            self.dataset_strings.append(dataset)
-
-        self.train_strings = []  # Training strings for n-shot learning.
-        for item in base_dataset["train"]:  # Prompts are only from train dataset.
-            _, _, dataset = self.build_question(item)
-            self.train_strings.append(dataset)
-
-    def __len__(self):
-        """Gets the length of the dataset
-
-        returns; the length of the datset (len(self.dataset_strings))
-        """
-        return len(self.dataset_strings)
-
-    def __getitem__(self, i):
-        """Gets an item from the dataset.
-
-        args:
-            i: the index of the dataset item.
-
-        returns: a dict containing the prompt, full phrase, and target.
-        """
-        prompt_string = ""
-
-        # There may be some contamination during training, validation is safe.
-        examples = random.sample(self.train_strings, self.n_shot)
-        for example in examples:
-            prompt_string += example + "\n\n"
-
-        prompt_string += self.prompt_strings[i]
-
-        to_return = {
-            "prompt": prompt_string,
-            "full_phrase": prompt_string + self.target_strings[i],
-            "target": self.target_strings[i],
-        }
-
-        return to_return
-
-    def build_question(self, item):
-        """Builds the properly formatted natural language question.
-
-        args:
-            item: the dataset item.
-
-        returns: a triplet containing the question, the answer, and the two
-        concatentated.
-        """
-        base_prompt = ""
-        base_prompt += item["question"]
-        base_prompt += "\n"
-
-        for j in range(len(item["choices"]["label"])):
-            base_prompt += item["choices"]["label"][j]
-            base_prompt += ". "
-            base_prompt += item["choices"]["text"][j]
-            base_prompt += "\n"
-
-        base_prompt += "\nAnswer: "
-
-        correct_answer = item["answerKey"]
-        correct_answer_idx = np.where(
-            np.array(item["choices"]["label"]) == correct_answer
-        )[0]
-        assert len(correct_answer_idx) == 1
-
-        target = (
-            f"{item['answerKey']}. {item['choices']['text'][correct_answer_idx.item()]}"
-        )
-
-        return (base_prompt, target, base_prompt + target)
-
-
 if __name__ == "__main__":
     # Get and set command line args.
     # TODO: add help.
@@ -353,16 +252,19 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    if args.n_shot > 0:
+        print("N-shot learning currently disabled.")
+        sys.exit()
+
     model = BloomWrapper(args)
-    base_dataset = load_dataset("ai2_arc", args.split)
-    val_dataset = MCQADataset(base_dataset, "validation", n_shot=args.n_shot)
+    val_dataset = MCQADataset("validation", n_shot=args.n_shot)
     val_loader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=os.cpu_count(),
     )
-    train_dataset = MCQADataset(base_dataset, "train", n_shot=args.n_shot)
+    train_dataset = MCQADataset("train", n_shot=args.n_shot)
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -385,7 +287,7 @@ if __name__ == "__main__":
     for epoch in range(120):
         model.model.eval()
         i = 0
-        for eval_data in val_loader:
+        for eval_data in tqdm(val_loader):
             model.validation_step(eval_data, args.print_eval)
             i += 1
         to_log = model.on_validation_epoch_end()
