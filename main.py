@@ -169,10 +169,9 @@ class BloomWrapper:
                 print(batch["prompt"][i])
                 print(f"Target: {batch['target'][i]}, Guess: {answer}")
                 print("---")
-
             # Is the answer correct?
             self.val_correct.append(
-                batch["target"][i].lower().strip().replace(".", "")
+                batch["target"][i].split("Answer:")[-1].lower().strip().replace(".", "")
                 == answer.lower().strip().replace(".", "")
             )
 
