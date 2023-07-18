@@ -281,8 +281,8 @@ if __name__ == "__main__":
 
         out_dir = (
             f"saved_models/{args.base_model.split('/')[-1]}-"
-            "{args.finetune_method}-{args.virtual_tokens}-{args.n_shot}-"
-            "{args.split}-{str(time.time()).split('.', maxsplit=1)[0]}/"
+            f"{args.finetune_method}-{args.virtual_tokens}-{args.n_shot}-"
+            f"{args.split}-{str(time.time()).split('.', maxsplit=1)[0]}/"
         )
     for epoch in range(120):
         model.model.eval()
@@ -290,6 +290,8 @@ if __name__ == "__main__":
         for eval_data in tqdm(val_loader):
             model.validation_step(eval_data, args.print_eval)
             i += 1
+            if epoch == 0 and i > 5:
+                break
         to_log = model.on_validation_epoch_end()
 
         # If we're only doing evaluation, print the results and exit.
@@ -314,13 +316,13 @@ if __name__ == "__main__":
         model.model.train()
 
         i = 0
-        for train_data in train_loader:
+        for train_data in tqdm(train_loader):
             loss = model.training_step(train_data)
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
             i += 1
-
-        model.training_epoch_end()
+            if i % 200 == 0: 
+                model.training_epoch_end()
         wandb.log({"train/epoch": epoch, "train/lr": scheduler.get_last_lr()[0]})
         scheduler.step()

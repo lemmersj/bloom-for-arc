@@ -146,6 +146,5 @@ class MCQADataset(Dataset):
                 f"{alphabet[item['label']]}. {item[answer_keys[item['label']]]}"
             )
         base_prompt += "\nAnswer: "
-        print(base_prompt + target)
         return (base_prompt, target, base_prompt + target)
 
