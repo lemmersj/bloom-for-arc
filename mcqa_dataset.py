@@ -23,9 +23,10 @@ class MCQADataset(Dataset):
         all_datasets = {}
         all_datasets["arc_easy"] = load_dataset("ai2_arc", "ARC-Easy")[split]
         all_datasets["arc_challenge"] = load_dataset("ai2_arc", "ARC-Challenge")[split]
-        all_datasets["race"] = load_dataset("race", "all")[split]
-        all_datasets["quail"] = load_dataset("quail")[split]
+        #all_datasets["race"] = load_dataset("race", "all")[split]
+        #all_datasets["quail"] = load_dataset("quail")[split]
         all_datasets["cosmos_qa"] = load_dataset("cosmos_qa")[split]
+        #all_datasets["squad"] = load_dataset("squad")[split]
         self.n_shot = n_shot
 
         # Initialize containers for the data.

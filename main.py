@@ -68,7 +68,7 @@ class BloomWrapper:
         # Load the model and tokenizer
         self.model = AutoModelForCausalLM.from_pretrained(args.base_model)
         self.tokenizer = AutoTokenizer.from_pretrained(args.base_model)
-        self.tokenizer.model_max_length = 256  # This was set in the example
+        self.tokenizer.model_max_length = 512  # Found via trial and error.
 
         # Initialize or load the finetuned parameters.
         if args.finetuned_model is not None:
@@ -105,7 +105,6 @@ class BloomWrapper:
             "labels": tokenized_batch["input_ids"].to(self.device),
             "attention_mask": tokenized_batch["attention_mask"].to(self.device),
         }
-
         # Perform the forward pass
         result = self.model(**new_batch)
 
@@ -223,6 +222,14 @@ class BloomWrapper:
         )
         return optimizer, scheduler
 
+    def get_max_num_tokens(self, dataset):
+        max_len = 0
+        for i in range(len(dataset)):
+            seq_len = len(self.tokenizer(dataset[i]['full_phrase'])['attention_mask'])
+            if seq_len > max_len:
+                max_len = seq_len
+        return max_len
+
 if __name__ == "__main__":
     # Get and set command line args.
     # TODO: add help.
@@ -283,6 +290,11 @@ if __name__ == "__main__":
             f"{args.finetune_method}-{args.virtual_tokens}-{args.n_shot}-"
             f"{args.split}-{str(time.time()).split('.', maxsplit=1)[0]}/"
         )
+
+    max_tokens = model.get_max_num_tokens(val_loader.dataset)
+    max_tokens = max(max_tokens, model.get_max_num_tokens(train_loader.dataset))
+    print(max_tokens)
+    sys.exit()
     for epoch in range(120):
         model.model.eval()
         i = 0
